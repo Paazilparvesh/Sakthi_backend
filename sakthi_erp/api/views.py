@@ -1376,7 +1376,6 @@ def get_overall_details(request):
                         "no_of_sheets",
                         "cycletime_per_sheet",
                         "total_cycle_time",
-                        "operator_name",
                         "machines_used",
                         "created_by__username",
                     )
@@ -1704,31 +1703,39 @@ def export_specific_details(request, ids=None):
         return Response({"error": str(e)}, status=500)
 
 
-# update over details
+# Update Inward Product
 @api_view(["PUT"])
-def update_overall_details(request, product_id):
+def update_product_details(request, product_id):
     try:
-        # 1. Find product
+        # Fetch product
         try:
             prod = product_details.objects.get(id=product_id)
         except product_details.DoesNotExist:
             return Response({"msg": "Product not found"}, status=404)
 
-        # 2. Update Product Fields
+        # ---------------------------
+        # Update Product Fields
+        # ---------------------------
+        prod.inward_slip_number = request.data.get(
+            "inward_slip_number", prod.inward_slip_number
+        )
+        prod.date = request.data.get("date", prod.date)
+        prod.worker_no = request.data.get("worker_no", prod.worker_no)
         prod.company_name = request.data.get("company_name", prod.company_name)
-        prod.serial_number = request.data.get("serial_number", prod.serial_number)
         prod.customer_name = request.data.get("customer_name", prod.customer_name)
+        prod.customer_dc_no = request.data.get("customer_dc_no", prod.customer_dc_no)
         prod.contact_no = request.data.get("contact_no", prod.contact_no)
+        prod.color = request.data.get("color", prod.color)
         prod.programer_status = request.data.get(
             "programer_status", prod.programer_status
         )
         prod.qa_status = request.data.get("qa_status", prod.qa_status)
         prod.outward_status = request.data.get("outward_status", prod.outward_status)
-        prod.date = request.data.get("date", prod.date)
-        prod.time = request.data.get("time", prod.time)
         prod.save()
 
-        # 3. Update Materials (loop)
+        # ---------------------------
+        # Update Materials (Loop)
+        # ---------------------------
         materials_data = request.data.get("materials", [])
 
         for mat_data in materials_data:
@@ -1741,14 +1748,18 @@ def update_overall_details(request, product_id):
             except product_material.DoesNotExist:
                 continue
 
+            mat.bay = mat_data.get("bay", mat.bay)
             mat.mat_type = mat_data.get("mat_type", mat.mat_type)
             mat.mat_grade = mat_data.get("mat_grade", mat.mat_grade)
             mat.thick = mat_data.get("thick", mat.thick)
             mat.width = mat_data.get("width", mat.width)
             mat.length = mat_data.get("length", mat.length)
+            mat.density = mat_data.get("density", mat.density)
+            mat.unit_weight = mat_data.get("unit_weight", mat.unit_weight)
             mat.quantity = mat_data.get("quantity", mat.quantity)
             mat.total_weight = mat_data.get("total_weight", mat.total_weight)
-            mat.bay = mat_data.get("bay", mat.bay)
+            mat.stock_due = mat_data.get("stock_due", mat.stock_due)
+            mat.remarks = mat_data.get("remarks", mat.remarks)
             mat.status = mat_data.get("status", mat.status)
             mat.programer_status = mat_data.get(
                 "programer_status", mat.programer_status
@@ -1757,68 +1768,156 @@ def update_overall_details(request, product_id):
             mat.acc_status = mat_data.get("acc_status", mat.acc_status)
             mat.save()
 
-            # --- Programmer Update ---
-            program_data = mat_data.get("programer_details", [])
-            for p in program_data:
-                program_id = p.get("id")
-                if program_id:
-                    programer_details.objects.filter(id=program_id).update(
-                        program_no=p.get("program_no"),
-                        processed_quantity=p.get("processed_quantity"),
-                        balance_quantity=p.get("balance_quantity"),
-                        used_weight=p.get("used_weight"),
-                        number_of_sheets=p.get("number_of_sheets"),
-                        time=p.get("time"),
-                        date=p.get("date"),
-                        remarks=p.get("remarks"),
-                    )
-
-            # --- QA Update ---
-            qa_data = mat_data.get("qa_details", [])
-            for q in qa_data:
-                qa_id = q.get("id")
-                if qa_id:
-                    Qa_details.objects.filter(id=qa_id).update(
-                        processed_date=q.get("processed_date"),
-                        time=q.get("time"),
-                        shift=q.get("shift"),
-                        operator_name=q.get("operator_name"),
-                        remarks=q.get("remarks"),
-                    )
-
-            # --- Accounts Update ---
-            acc_data = mat_data.get("account_details", [])
-            for a in acc_data:
-                acc_id = a.get("id")
-                if acc_id:
-                    acc_details.objects.filter(id=acc_id).update(
-                        invoice_no=a.get("invoice_no"),
-                        date=a.get("date"),
-                        time=a.get("time"),
-                        status=a.get("status"),
-                        remarks=a.get("remarks"),
-                    )
-
-        return Response({"msg": "Updated successfully"}, status=200)
+        return Response(
+            {"msg": "Product and materials updated successfully"},
+            status=status.HTTP_200_OK,
+        )
 
     except Exception as e:
-        print("❌ Update Error:", str(e))
-        return Response({"error": str(e)}, status=500)
+        return Response(
+            {"msg": f"Error updating product: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
-# delete over all detail
-@api_view(["DELETE"])
-def delete_product(request, product_id):
+# Update Programmer Product
+@api_view(["PUT"])
+def update_programer_details(request, product_id):
+    """
+    Update programmer details for a specific product + specific material.
+
+    Requires:
+    - product_id (path param)
+    - material_details (sent in request body)
+    """
     try:
+        # ---------------------------
+        # Validate required material ID
+        # ---------------------------
+        material_id = request.data.get("material_details")
+
+        if not material_id:
+            return Response({"msg": "material_details is required"}, status=400)
+
+        # ---------------------------
+        # Fetch programmer entry using product + material
+        # ---------------------------
         try:
-            prod = product_details.objects.get(id=product_id)
-        except product_details.DoesNotExist:
-            return Response({"msg": "Product not found"}, status=404)
+            prog = programer_details.objects.get(
+                product_details_id=product_id, material_details_id=material_id
+            )
+        except programer_details.DoesNotExist:
+            return Response(
+                {"msg": "Programmer details not found for this product and material"},
+                status=404,
+            )
+        except programer_details.MultipleObjectsReturned:
+            return Response(
+                {"msg": "Multiple programmer entries found. Provide programmer ID."},
+                status=400,
+            )
 
-        prod.delete()
+        # ---------------------------
+        # Update normal fields
+        # ---------------------------
+        fields_to_update = [
+            "program_no",
+            "program_date",
+            "processed_quantity",
+            "balance_quantity",
+            "processed_width",
+            "processed_length",
+            "used_weight",
+            "number_of_sheets",
+            "cut_length_per_sheet",
+            "pierce_per_sheet",
+            "processed_mins_per_sheet",
+            "total_planned_hours",
+            "total_meters",
+            "total_piercing",
+            "total_used_weight",
+            "total_no_of_sheets",
+            "date",
+            "time",
+            "remarks",
+        ]
 
-        return Response({"msg": "Product and all related data deleted"}, status=200)
+        for field in fields_to_update:
+            if field in request.data:
+                setattr(prog, field, request.data.get(field))
+
+        # ---------------------------
+        # Update created_by (ForeignKey)
+        # ---------------------------
+        created_by_username = request.data.get("created_by")
+        if created_by_username:
+            try:
+                user = All_User.objects.get(username=created_by_username)
+                prog.created_by = user
+            except All_User.DoesNotExist:
+                return Response({"msg": "Invalid created_by username"}, status=400)
+
+        # Save updated entry
+        prog.save()
+
+        return Response({"msg": "Programmer details updated successfully"}, status=200)
 
     except Exception as e:
-        print("❌ Delete Error:", str(e))
-        return Response({"error": str(e)}, status=500)
+        return Response({"msg": f"Error updating programmer: {str(e)}"}, status=500)
+
+
+# Update Qa Product
+@api_view(["PUT"])
+def update_qa_details(request, product_id):
+    try:
+        # -----------------------------------------
+        # Validate material ID
+        # -----------------------------------------
+        material_id = request.data.get("material_details")
+
+        if not material_id:
+            return Response({"msg": "material_details is required"}, status=400)
+
+        # -----------------------------------------
+        # Fetch QA for given product + material
+        # -----------------------------------------
+        try:
+            qa = Qa_details.objects.get(
+                product_details_id=product_id, material_details_id=material_id
+            )
+        except Qa_details.DoesNotExist:
+            return Response({"msg": "QA details not found"}, status=404)
+
+        # -----------------------------------------
+        # Update fields
+        # -----------------------------------------
+        fields = [
+            "processed_date",
+            "time",
+            "shift",
+            "no_of_sheets",
+            "cycletime_per_sheet",
+            "total_cycle_time",
+            "machines_used",
+        ]
+
+        for field in fields:
+            setattr(qa, field, request.data.get(field, getattr(qa, field)))
+
+        # -----------------------------------------
+        # Update created_by (ForeignKey)
+        # -----------------------------------------
+        created_by_username = request.data.get("created_by")
+        if created_by_username:
+            try:
+                qa.created_by = All_User.objects.get(username=created_by_username)
+            except All_User.DoesNotExist:
+                return Response({"msg": "created_by user not found"}, status=400)
+
+        # Save updates
+        qa.save()
+
+        return Response({"msg": "QA updated successfully"}, status=200)
+
+    except Exception as e:
+        return Response({"msg": f"Error updating QA: {str(e)}"}, status=500)

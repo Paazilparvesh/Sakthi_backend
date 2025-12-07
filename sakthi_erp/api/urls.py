@@ -60,7 +60,10 @@ urlpatterns = [
     path("get_overall_details/",views.get_overall_details,name="get_overall_details"),
     path("export_overall_details/",views.export_overall_details,name="export_overall_details"),
     path("export_specific_details/<str:ids>/", views.export_specific_details, name="export_specific_details"),
-    path("update_overall_details/<product_id>/",views.update_overall_details,name="update_overall_details"),
-    path("delete_product/<product_id>/",views.delete_product,name="delete_product"),
+    
+    # Admin Update
+    path("update_product_details/<int:product_id>/", views.update_product_details, name="update_product_details"),
+    path("update_programer_details/<int:product_id>/",views.update_programer_details,name="update_programer_details"),
+    path("update_qa_details/<int:product_id>/",views.update_qa_details,name="update_qa_details"),
 
 ]
