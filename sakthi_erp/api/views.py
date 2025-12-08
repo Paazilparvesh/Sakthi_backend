@@ -1893,7 +1893,6 @@ def update_qa_details(request, product_id):
         # -----------------------------------------
         fields = [
             "processed_date",
-            "time",
             "shift",
             "no_of_sheets",
             "cycletime_per_sheet",
@@ -1921,3 +1920,176 @@ def update_qa_details(request, product_id):
 
     except Exception as e:
         return Response({"msg": f"Error updating QA: {str(e)}"}, status=500)
+
+
+
+@api_view(["GET"])
+def filter_overall_details(request):
+    try:
+        # -----------------------------
+        # PAGINATION SETTINGS
+        # -----------------------------
+        page = int(request.GET.get("page", 1))
+        page_size = int(request.GET.get("page_size", 20))
+        start = (page - 1) * page_size
+        end = start + page_size
+
+        # -----------------------------
+        # DATE RANGE FILTER HELPERS
+        # -----------------------------
+        date_from = request.GET.get("date_from")
+        date_to = request.GET.get("date_to")
+
+        # -----------------------------
+        # SORTING SETTINGS
+        # -----------------------------
+        sort_by = request.GET.get("sort_by")  # example: serial_number
+        sort_order = request.GET.get("sort_order", "asc")
+
+        # -----------------------------
+        # BASE QUERYSET
+        # -----------------------------
+        products = product_details.objects.all()
+
+        # -----------------------------
+        # PRODUCT FILTERS
+        # -----------------------------
+        if request.GET.get("product_id"):
+            products = products.filter(id=request.GET.get("product_id"))
+
+        if request.GET.get("serial_number"):
+            products = products.filter(serial_number__icontains=request.GET.get("serial_number"))
+
+        if request.GET.get("company_name"):
+            products = products.filter(company_name__icontains=request.GET.get("company_name"))
+
+        if request.GET.get("customer_name"):
+            products = products.filter(customer_name__icontains=request.GET.get("customer_name"))
+
+        # PRODUCT DATE FILTER
+        if date_from:
+            products = products.filter(date__gte=date_from)
+
+        if date_to:
+            products = products.filter(date__lte=date_to)
+
+        # -----------------------------
+        # MATERIAL FILTERS
+        # -----------------------------
+        materials = product_material.objects.filter(product_detail__in=products)
+
+        if request.GET.get("material_id"):
+            materials = materials.filter(id=request.GET.get("material_id"))
+
+        if request.GET.get("mat_type"):
+            materials = materials.filter(mat_type__icontains=request.GET.get("mat_type"))
+
+        if request.GET.get("mat_grade"):
+            materials = materials.filter(mat_grade__icontains=request.GET.get("mat_grade"))
+
+        if request.GET.get("bay"):
+            materials = materials.filter(bay__icontains=request.GET.get("bay"))
+
+        # -----------------------------
+        # PROGRAMMER FILTERS
+        # -----------------------------
+        programmer = programer_details.objects.filter(material_details__in=materials)
+
+        if request.GET.get("program_no"):
+            programmer = programmer.filter(program_no__icontains=request.GET.get("program_no"))
+
+        if request.GET.get("program_date"):
+            programmer = programmer.filter(program_date=request.GET.get("program_date"))
+
+        # -----------------------------
+        # QA FILTERS
+        # -----------------------------
+        qa = Qa_details.objects.filter(material_details__in=materials)
+
+        if request.GET.get("processed_date"):
+            qa = qa.filter(processed_date=request.GET.get("processed_date"))
+
+        # DATE RANGE FOR QA
+        if request.GET.get("qa_date_from"):
+            qa = qa.filter(processed_date__gte=request.GET.get("qa_date_from"))
+
+        if request.GET.get("qa_date_to"):
+            qa = qa.filter(processed_date__lte=request.GET.get("qa_date_to"))
+
+        # -----------------------------
+        # ACC FILTERS
+        # -----------------------------
+        acc = acc_details.objects.filter(material_details__in=materials)
+
+        if request.GET.get("invoice_no"):
+            acc = acc.filter(invoice_no__icontains=request.GET.get("invoice_no"))
+
+        if request.GET.get("acc_date_from"):
+            acc = acc.filter(date__gte=request.GET.get("acc_date_from"))
+
+        if request.GET.get("acc_date_to"):
+            acc = acc.filter(date__lte=request.GET.get("acc_date_to"))
+
+        # -----------------------------
+        # SORTING
+        # -----------------------------
+        if sort_by:
+            if sort_order == "desc":
+                sort_by = f"-{sort_by}"
+            products = products.order_by(sort_by)
+
+        # -----------------------------
+        # PAGINATION
+        # -----------------------------
+        products_page = products[start:end]
+
+        # -----------------------------
+        # BUILD FINAL RESPONSE
+        # -----------------------------
+        final_output = []
+
+        for prod in products_page:
+            prod_mats = materials.filter(product_detail=prod)
+
+            mat_list = []
+
+            for mat in prod_mats:
+                mat_prog = programmer.filter(material_details=mat)
+                mat_qa = qa.filter(material_details=mat)
+                mat_acc = acc.filter(material_details=mat)
+
+                mat_list.append({
+                    "id": mat.id,
+                    "mat_type": mat.mat_type,
+                    "mat_grade": mat.mat_grade,
+                    "thick": mat.thick,
+                    "width": mat.width,
+                    "length": mat.length,
+                    "bay": mat.bay,
+                    "programmer_details": list(mat_prog.values()),
+                    "qa_details": list(mat_qa.values()),
+                    "acc_details": list(mat_acc.values())
+                })
+
+            final_output.append({
+                "product_id": prod.id,
+                "company_name": prod.company_name,
+                "serial_number": prod.serial_number,
+                "customer_name": prod.customer_name,
+                "date": prod.date,
+                "materials": mat_list
+            })
+
+        return Response({
+            "page": page,
+            "page_size": page_size,
+            "total_products": products.count(),
+            "data": final_output
+        }, status=200)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+    
+
+
+

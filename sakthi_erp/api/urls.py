@@ -65,5 +65,7 @@ urlpatterns = [
     path("update_product_details/<int:product_id>/", views.update_product_details, name="update_product_details"),
     path("update_programer_details/<int:product_id>/",views.update_programer_details,name="update_programer_details"),
     path("update_qa_details/<int:product_id>/",views.update_qa_details,name="update_qa_details"),
+        
+    path("filter_overall_details/",views.filter_overall_details,name="filter_overall_details"),
 
 ]
