@@ -68,4 +68,9 @@ urlpatterns = [
         
     path("filter_overall_details/",views.filter_overall_details,name="filter_overall_details"),
 
+    path("operator_report/", views.operator_report, name="operator_report"),
+
+    path("report/", views.universal_report, name="universal_report"),
+
+
 ]

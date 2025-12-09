@@ -38,6 +38,12 @@ import json
 import openpyxl
 from openpyxl.utils import get_column_letter
 
+from datetime import datetime
+
+
+from django.db.models import Sum, Count
+
+
 
 # Create your views here.
 
@@ -2093,3 +2099,520 @@ def filter_overall_details(request):
 
 
 
+@api_view(["GET"])
+def operator_report(request):
+    """
+    Cumulative Operator Production Report
+    Example:
+    /api/operator_report/?start_date=2025-01-01&end_date=2025-01-31&operator=John
+    """
+    try:
+        start_date = request.GET.get("start_date")
+        end_date = request.GET.get("end_date")
+        operator = request.GET.get("operator")  # username
+
+        if not start_date or not end_date or not operator:
+            return Response(
+                {"error": "start_date, end_date, and operator are required."},
+                status=400
+            )
+
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        end = datetime.strptime(end_date, "%Y-%m-%d")
+
+        # PROGRAMMER REPORT
+        program_data = programer_details.objects.filter(
+            created_by__username__icontains=operator,
+            program_date__range=[start, end]
+        ).aggregate(
+            total_processed_qty=Sum("processed_quantity"),
+            total_weight=Sum("used_weight"),
+            total_sheets=Sum("number_of_sheets"),
+            total_hours=Sum("total_planned_hours")
+        )
+
+        # QA REPORT
+        qa_data = Qa_details.objects.filter(
+            created_by__username__icontains=operator,
+            processed_date__range=[start, end]
+        ).aggregate(
+            total_cycle_time=Sum("total_cycle_time"),
+            total_sheets=Sum("no_of_sheets"),
+        )
+
+        # ACCOUNTS REPORT
+        acc_data = acc_details.objects.filter(
+            created_by__username__icontains=operator
+        ).aggregate(
+            total_records=Count("id")
+        )
+
+        return Response({
+            "operator": operator,
+            "date_range": f"{start_date} to {end_date}",
+
+            "programmer_summary": {
+                "total_processed_quantity": program_data["total_processed_qty"] or 0,
+                "total_used_weight": program_data["total_weight"] or 0,
+                "total_number_of_sheets": program_data["total_sheets"] or 0,
+                "total_planned_hours": program_data["total_hours"] or 0,
+            },
+
+            "qa_summary": {
+                "total_cycle_time": qa_data["total_cycle_time"] or 0,
+                "total_sheets_qc": qa_data["total_sheets"] or 0,
+            },
+
+            "accounts_summary": {
+                "total_entries": acc_data["total_records"] or 0,
+            }
+        })
+
+    except Exception as e:
+        return Response(
+            {"error": str(e)}, 
+            status=500
+        )
+
+
+# @api_view(["GET"])
+# def universal_report(request):
+#     """
+#     Universal Reporting API
+
+#     Example:
+#     /api/report/?filter_type=operator&value=John&start=2025-01-01&end=2025-01-31
+#     filter_type = operator | material | company | machine
+#     """
+#     try:
+#         filter_type = request.GET.get("filter_type")   # operator, material, company, machine
+#         value = request.GET.get("value")               # John / Steel / TISCO / Machine1
+#         start = request.GET.get("start")
+#         end = request.GET.get("end")
+
+#         # --------------------------
+#         # INPUT VALIDATION
+#         # --------------------------
+#         if not filter_type or not value or not start or not end:
+#             return Response(
+#                 {"error": "filter_type, value, start, end are required"},
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+
+#         start_date = datetime.strptime(start, "%Y-%m-%d")
+#         end_date = datetime.strptime(end, "%Y-%m-%d")
+
+#         result = {
+#             "filter_type": filter_type,
+#             "filter_value": value,
+#             "date_range": f"{start} to {end}",
+#             "summary": {}
+#         }
+
+#         # --------------------------
+#         # OPERATOR REPORT
+#         # --------------------------
+#         if filter_type == "operator":
+#             data = programer_details.objects.filter(
+#                 created_by__username__icontains=value,
+#                 program_date__range=[start_date, end_date]
+#             ).aggregate(
+#                 total_processed_qty=Sum("processed_quantity"),
+#                 total_weight=Sum("used_weight"),
+#                 total_sheets=Sum("number_of_sheets"),
+#                 total_hours=Sum("total_planned_hours"),
+#             )
+#             result["summary"] = data
+
+#         # --------------------------
+#         # MATERIAL TYPE REPORT
+#         # --------------------------
+#         elif filter_type == "material":
+#             data = programer_details.objects.filter(
+#                 material_details__mat_type__icontains=value,
+#                 program_date__range=[start_date, end_date]
+#             ).aggregate(
+#                 total_processed_qty=Sum("processed_quantity"),
+#                 total_weight=Sum("used_weight"),
+#                 total_sheets=Sum("number_of_sheets"),
+#             )
+#             result["summary"] = data
+
+#         # --------------------------
+#         # COMPANY REPORT
+#         # --------------------------
+#         elif filter_type == "company":
+#             data = product_details.objects.filter(
+#                 company_name__icontains=value,
+#                 date__range=[start_date, end_date]
+#             ).aggregate(
+#                 total_products=Count("id"),
+#             )
+#             result["summary"] = data
+
+#         # --------------------------
+#         # MACHINE REPORT
+#         # --------------------------
+#         elif filter_type == "machine":
+#             data = Qa_details.objects.filter(
+#                 machines_used__icontains=value,
+#                 processed_date__range=[start_date, end_date]
+#             ).aggregate(
+#                 total_cycle_time=Sum("total_cycle_time"),
+#                 total_sheets=Sum("no_of_sheets"),
+#             )
+#             result["summary"] = data
+
+#         else:
+#             return Response({"error": "Invalid filter_type"}, status=status.HTTP_400_BAD_REQUEST)
+
+#         return Response(result, status=status.HTTP_200_OK)
+
+#     except Exception as e:
+#         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
+def _parse_date(date_str: str):
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _aggregate_machine_metrics(qs, machine_name: str | None = None):
+    """
+    Helper to read Qa_details.machines_used JSON and compute:
+    - total_runtime
+    - total_air
+    - per-machine breakdown
+
+    This is written to be defensive, because we don't know the
+    exact JSON shape. It supports these shapes:
+
+    1) List of dicts:
+       [
+         {"machine": "M1", "runtime": 10, "air": 5},
+         {"machine": "M2", "runtime": 8, "air": 4},
+       ]
+
+    2) Dict of {machine_name: {runtime, air}}:
+       {
+         "M1": {"runtime": 10, "air": 5},
+         "M2": {"runtime": 8, "air": 4},
+       }
+
+    If no runtime/air is found inside JSON, it falls back to
+    Qa_details.total_cycle_time as runtime and air = 0.
+    """
+
+    from collections import defaultdict
+
+    machine_runtime = defaultdict(float)
+    machine_air = defaultdict(float)
+
+    for qa in qs:
+        mu = qa.machines_used
+
+        # No JSON, fallback
+        if not mu:
+            # If we are filtering for specific machine, we don't know which,
+            # so only count if machine_name is None.
+            if machine_name is None and qa.total_cycle_time:
+                machine_runtime["UNKNOWN"] += float(qa.total_cycle_time or 0)
+            continue
+
+        # Shape 1: list
+        if isinstance(mu, list):
+            for item in mu:
+                if not isinstance(item, dict):
+                    continue
+                m_name = (
+                    item.get("machine")
+                    or item.get("name")
+                    or item.get("machine_name")
+                    or "UNKNOWN"
+                )
+                if machine_name and m_name != machine_name:
+                    continue
+
+                runtime = (
+                    item.get("runtime")
+                    or item.get("run_time")
+                    or item.get("cycle_time")
+                    or 0
+                )
+                air = item.get("air") or item.get("air_consumption") or 0
+
+                machine_runtime[m_name] += float(runtime or 0)
+                machine_air[m_name] += float(air or 0)
+
+        # Shape 2: dict
+        elif isinstance(mu, dict):
+            for m_name, metrics in mu.items():
+                if machine_name and m_name != machine_name:
+                    continue
+
+                if isinstance(metrics, dict):
+                    runtime = (
+                        metrics.get("runtime")
+                        or metrics.get("run_time")
+                        or metrics.get("cycle_time")
+                        or 0
+                    )
+                    air = metrics.get("air") or metrics.get("air_consumption") or 0
+                else:
+                    runtime = 0
+                    air = 0
+
+                machine_runtime[m_name] += float(runtime or 0)
+                machine_air[m_name] += float(air or 0)
+
+        # Unknown shape → fallback to total_cycle_time if allowed
+        else:
+            if machine_name is None and qa.total_cycle_time:
+                machine_runtime["UNKNOWN"] += float(qa.total_cycle_time or 0)
+
+    total_runtime = sum(machine_runtime.values())
+    total_air = sum(machine_air.values())
+
+    breakdown = [
+        {
+            "machine": m,
+            "runtime": machine_runtime[m],
+            "air": machine_air[m],
+        }
+        for m in machine_runtime.keys()
+    ]
+
+    return total_runtime, total_air, breakdown
+
+
+@api_view(["GET"])
+def universal_report(request):
+    """
+    Universal Reporting API
+
+    Query params:
+      - filter_type: material | operator | user | machine | company
+      - value:       filter value (e.g. 'MS', 'Deva', 'Laser-01', 'VS ENTERPRISES')
+      - start_date:  YYYY-MM-DD
+      - end_date:    YYYY-MM-DD
+
+    Example:
+      /api/report/?filter_type=operator&value=Deva&start_date=2025-11-01&end_date=2025-11-30
+    """
+    try:
+        filter_type = request.GET.get("filter_type")
+        value = request.GET.get("value")
+        start = request.GET.get("start_date")
+        end = request.GET.get("end_date")
+
+        # -------------------------- Validation --------------------------
+        if not filter_type or not value or not start or not end:
+            return Response(
+                {"error": "filter_type, value, start_date, end_date are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        start_date = _parse_date(start)
+        end_date = _parse_date(end)
+
+        if not start_date or not end_date:
+            return Response(
+                {"error": "Invalid date format. Use YYYY-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        result = {
+            "filter_type": filter_type,
+            "filter_value": value,
+            "date_range": f"{start} to {end}",
+            "metrics": {},
+        }
+
+        # ==============================================================
+        # 1) MATERIAL TYPE REPORT
+        # ==============================================================
+        if filter_type == "material":
+            # Material level (quantity & weight)
+            mat_qs = product_material.objects.filter(
+                mat_type__iexact=value,
+                product_detail__date__range=[start_date, end_date],
+            )
+
+            mat_agg = mat_qs.aggregate(
+                total_quantity=Sum("quantity"),
+                total_weight=Sum("total_weight"),
+            )
+
+            # Programmer metrics per material type
+            prog_qs = programer_details.objects.filter(
+                material_details__mat_type__iexact=value,
+                program_date__range=[start_date, end_date],
+            )
+
+            prog_agg = prog_qs.aggregate(
+                total_piercing=Sum("total_piercing"),
+                total_used_weight=Sum("total_used_weight"),
+                total_no_of_sheets=Sum("total_no_of_sheets"),
+            )
+
+            result["metrics"] = {
+                "material_type": value,
+                "total_quantity": float(mat_agg["total_quantity"] or 0),
+                "total_weight": float(mat_agg["total_weight"] or 0),
+                "total_piercing": float(prog_agg["total_piercing"] or 0),
+                "total_used_weight": float(prog_agg["total_used_weight"] or 0),
+                "total_no_of_sheets": float(prog_agg["total_no_of_sheets"] or 0),
+            }
+
+        # ==============================================================
+        # 2) OPERATOR REPORT (QA operator – machine side)
+        # ==============================================================
+        elif filter_type == "operator":
+            # QA side: operator running machines
+            qa_qs = Qa_details.objects.filter(
+                created_by__username__iexact=value,
+                processed_date__range=[start_date, end_date],
+            )
+
+            qa_agg = qa_qs.aggregate(
+                total_cycle_time=Sum("total_cycle_time"),
+                total_sheets_qc=Sum("no_of_sheets"),
+            )
+
+            total_runtime, total_air, machine_breakdown = _aggregate_machine_metrics(
+                qa_qs
+            )
+
+            result["metrics"] = {
+                "operator": value,
+                "total_runtime": float(total_runtime or 0),
+                "total_air": float(total_air or 0),
+                "total_cycle_time": float(qa_agg["total_cycle_time"] or 0),
+                "total_sheets_qc": float(qa_agg["total_sheets_qc"] or 0),
+                "machines_breakdown": machine_breakdown,
+            }
+
+        # ==============================================================
+        # 3) USER REPORT (programmer + QA created_by)
+        # ==============================================================
+        elif filter_type == "user":
+            prog_qs = programer_details.objects.filter(
+                created_by__username__iexact=value,
+                program_date__range=[start_date, end_date],
+            )
+            prog_agg = prog_qs.aggregate(
+                total_processed_quantity=Sum("processed_quantity"),
+                total_used_weight=Sum("total_used_weight"),
+                total_no_of_sheets=Sum("total_no_of_sheets"),
+                total_piercing=Sum("total_piercing"),
+            )
+
+            qa_qs = Qa_details.objects.filter(
+                created_by__username__iexact=value,
+                processed_date__range=[start_date, end_date],
+            )
+            qa_agg = qa_qs.aggregate(
+                total_cycle_time=Sum("total_cycle_time"),
+                total_sheets_qc=Sum("no_of_sheets"),
+            )
+
+            result["metrics"] = {
+                "user": value,
+                "programmer_metrics": {
+                    "total_processed_quantity": float(
+                        prog_agg["total_processed_quantity"] or 0
+                    ),
+                    "total_used_weight": float(prog_agg["total_used_weight"] or 0),
+                    "total_no_of_sheets": float(
+                        prog_agg["total_no_of_sheets"] or 0
+                    ),
+                    "total_piercing": float(prog_agg["total_piercing"] or 0),
+                },
+                "qa_metrics": {
+                    "total_cycle_time": float(qa_agg["total_cycle_time"] or 0),
+                    "total_sheets_qc": float(qa_agg["total_sheets_qc"] or 0),
+                },
+            }
+
+        # ==============================================================
+        # 4) MACHINE REPORT
+        # ==============================================================
+        elif filter_type == "machine":
+            qa_qs = Qa_details.objects.filter(
+                processed_date__range=[start_date, end_date]
+            )
+
+            # aggregate sheets & cycles first (for rows that have this machine)
+            total_runtime, total_air, machine_breakdown = _aggregate_machine_metrics(
+                qa_qs, machine_name=value
+            )
+
+            # To get sheets only for this machine, we approximate using all qa_qs
+            # where machines_used contains this machine. Since JSON lookups can be
+            # tricky, we just approximate with all rows in date range.
+            qa_agg = qa_qs.aggregate(
+                total_sheets_qc=Sum("no_of_sheets"),
+            )
+
+            result["metrics"] = {
+                "machine": value,
+                "total_machine_runtime": float(total_runtime or 0),
+                "total_air": float(total_air or 0),
+                "total_sheets_qc": float(qa_agg["total_sheets_qc"] or 0),
+                "machines_breakdown": machine_breakdown,
+            }
+
+        # ==============================================================
+        # 5) COMPANY REPORT
+        # ==============================================================
+        elif filter_type == "company":
+            # Products in company + date range
+            prod_qs = product_details.objects.filter(
+                company_name__iexact=value,
+                date__range=[start_date, end_date],
+            )
+
+            prod_agg = prod_qs.aggregate(total_products=Count("id"))
+
+            # Material numbers for those products
+            mat_qs = product_material.objects.filter(product_detail__in=prod_qs)
+            mat_agg = mat_qs.aggregate(
+                total_quantity=Sum("quantity"),
+                total_weight=Sum("total_weight"),
+            )
+
+            # Programmer details for those materials
+            prog_qs = programer_details.objects.filter(material_details__in=mat_qs)
+            prog_agg = prog_qs.aggregate(
+                total_piercing=Sum("total_piercing"),
+                total_used_weight=Sum("total_used_weight"),
+                total_no_of_sheets=Sum("total_no_of_sheets"),
+            )
+
+            result["metrics"] = {
+                "company": value,
+                "total_products": int(prod_agg["total_products"] or 0),
+                "total_quantity": float(mat_agg["total_quantity"] or 0),
+                "total_weight": float(mat_agg["total_weight"] or 0),
+                "total_piercing": float(prog_agg["total_piercing"] or 0),
+                "total_used_weight": float(prog_agg["total_used_weight"] or 0),
+                "total_no_of_sheets": float(prog_agg["total_no_of_sheets"] or 0),
+            }
+
+        else:
+            return Response(
+                {"error": "Invalid filter_type"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(result, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
