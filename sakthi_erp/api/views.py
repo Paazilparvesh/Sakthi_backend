@@ -40,9 +40,12 @@ from openpyxl.utils import get_column_letter
 
 from datetime import datetime
 
+import io
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
+from django.views.decorators.csrf import csrf_exempt
 
 from django.db.models import Sum, Count
-
 
 
 # Create your views here.
@@ -1590,8 +1593,8 @@ def export_specific_details(request, ids=None):
             # Filter selected IDs
             products_qs = product_details.objects.filter(id__in=product_ids)
 
-            if not products_qs.exists():
-                return Response({"msg": "No products found for given IDs"}, status=404)
+            # if not products_qs.exists():
+            #     return Response({"msg": "No products found for given IDs"}, status=404)
 
         else:
             # No IDs → export all
@@ -1928,7 +1931,6 @@ def update_qa_details(request, product_id):
         return Response({"msg": f"Error updating QA: {str(e)}"}, status=500)
 
 
-
 @api_view(["GET"])
 def filter_overall_details(request):
     try:
@@ -1964,13 +1966,19 @@ def filter_overall_details(request):
             products = products.filter(id=request.GET.get("product_id"))
 
         if request.GET.get("serial_number"):
-            products = products.filter(serial_number__icontains=request.GET.get("serial_number"))
+            products = products.filter(
+                serial_number__icontains=request.GET.get("serial_number")
+            )
 
         if request.GET.get("company_name"):
-            products = products.filter(company_name__icontains=request.GET.get("company_name"))
+            products = products.filter(
+                company_name__icontains=request.GET.get("company_name")
+            )
 
         if request.GET.get("customer_name"):
-            products = products.filter(customer_name__icontains=request.GET.get("customer_name"))
+            products = products.filter(
+                customer_name__icontains=request.GET.get("customer_name")
+            )
 
         # PRODUCT DATE FILTER
         if date_from:
@@ -1988,10 +1996,14 @@ def filter_overall_details(request):
             materials = materials.filter(id=request.GET.get("material_id"))
 
         if request.GET.get("mat_type"):
-            materials = materials.filter(mat_type__icontains=request.GET.get("mat_type"))
+            materials = materials.filter(
+                mat_type__icontains=request.GET.get("mat_type")
+            )
 
         if request.GET.get("mat_grade"):
-            materials = materials.filter(mat_grade__icontains=request.GET.get("mat_grade"))
+            materials = materials.filter(
+                mat_grade__icontains=request.GET.get("mat_grade")
+            )
 
         if request.GET.get("bay"):
             materials = materials.filter(bay__icontains=request.GET.get("bay"))
@@ -2002,7 +2014,9 @@ def filter_overall_details(request):
         programmer = programer_details.objects.filter(material_details__in=materials)
 
         if request.GET.get("program_no"):
-            programmer = programmer.filter(program_no__icontains=request.GET.get("program_no"))
+            programmer = programmer.filter(
+                program_no__icontains=request.GET.get("program_no")
+            )
 
         if request.GET.get("program_date"):
             programmer = programmer.filter(program_date=request.GET.get("program_date"))
@@ -2064,39 +2078,44 @@ def filter_overall_details(request):
                 mat_qa = qa.filter(material_details=mat)
                 mat_acc = acc.filter(material_details=mat)
 
-                mat_list.append({
-                    "id": mat.id,
-                    "mat_type": mat.mat_type,
-                    "mat_grade": mat.mat_grade,
-                    "thick": mat.thick,
-                    "width": mat.width,
-                    "length": mat.length,
-                    "bay": mat.bay,
-                    "programmer_details": list(mat_prog.values()),
-                    "qa_details": list(mat_qa.values()),
-                    "acc_details": list(mat_acc.values())
-                })
+                mat_list.append(
+                    {
+                        "id": mat.id,
+                        "mat_type": mat.mat_type,
+                        "mat_grade": mat.mat_grade,
+                        "thick": mat.thick,
+                        "width": mat.width,
+                        "length": mat.length,
+                        "bay": mat.bay,
+                        "programmer_details": list(mat_prog.values()),
+                        "qa_details": list(mat_qa.values()),
+                        "acc_details": list(mat_acc.values()),
+                    }
+                )
 
-            final_output.append({
-                "product_id": prod.id,
-                "company_name": prod.company_name,
-                "serial_number": prod.serial_number,
-                "customer_name": prod.customer_name,
-                "date": prod.date,
-                "materials": mat_list
-            })
+            final_output.append(
+                {
+                    "product_id": prod.id,
+                    "company_name": prod.company_name,
+                    "serial_number": prod.serial_number,
+                    "customer_name": prod.customer_name,
+                    "date": prod.date,
+                    "materials": mat_list,
+                }
+            )
 
-        return Response({
-            "page": page,
-            "page_size": page_size,
-            "total_products": products.count(),
-            "data": final_output
-        }, status=200)
+        return Response(
+            {
+                "page": page,
+                "page_size": page_size,
+                "total_products": products.count(),
+                "data": final_output,
+            },
+            status=200,
+        )
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
-    
-
 
 
 @api_view(["GET"])
@@ -2114,7 +2133,7 @@ def operator_report(request):
         if not start_date or not end_date or not operator:
             return Response(
                 {"error": "start_date, end_date, and operator are required."},
-                status=400
+                status=400,
             )
 
         start = datetime.strptime(start_date, "%Y-%m-%d")
@@ -2122,19 +2141,17 @@ def operator_report(request):
 
         # PROGRAMMER REPORT
         program_data = programer_details.objects.filter(
-            created_by__username__icontains=operator,
-            program_date__range=[start, end]
+            created_by__username__icontains=operator, program_date__range=[start, end]
         ).aggregate(
             total_processed_qty=Sum("processed_quantity"),
             total_weight=Sum("used_weight"),
             total_sheets=Sum("number_of_sheets"),
-            total_hours=Sum("total_planned_hours")
+            total_hours=Sum("total_planned_hours"),
         )
 
         # QA REPORT
         qa_data = Qa_details.objects.filter(
-            created_by__username__icontains=operator,
-            processed_date__range=[start, end]
+            created_by__username__icontains=operator, processed_date__range=[start, end]
         ).aggregate(
             total_cycle_time=Sum("total_cycle_time"),
             total_sheets=Sum("no_of_sheets"),
@@ -2143,135 +2160,31 @@ def operator_report(request):
         # ACCOUNTS REPORT
         acc_data = acc_details.objects.filter(
             created_by__username__icontains=operator
-        ).aggregate(
-            total_records=Count("id")
-        )
+        ).aggregate(total_records=Count("id"))
 
-        return Response({
-            "operator": operator,
-            "date_range": f"{start_date} to {end_date}",
-
-            "programmer_summary": {
-                "total_processed_quantity": program_data["total_processed_qty"] or 0,
-                "total_used_weight": program_data["total_weight"] or 0,
-                "total_number_of_sheets": program_data["total_sheets"] or 0,
-                "total_planned_hours": program_data["total_hours"] or 0,
-            },
-
-            "qa_summary": {
-                "total_cycle_time": qa_data["total_cycle_time"] or 0,
-                "total_sheets_qc": qa_data["total_sheets"] or 0,
-            },
-
-            "accounts_summary": {
-                "total_entries": acc_data["total_records"] or 0,
+        return Response(
+            {
+                "operator": operator,
+                "date_range": f"{start_date} to {end_date}",
+                "programmer_summary": {
+                    "total_processed_quantity": program_data["total_processed_qty"]
+                    or 0,
+                    "total_used_weight": program_data["total_weight"] or 0,
+                    "total_number_of_sheets": program_data["total_sheets"] or 0,
+                    "total_planned_hours": program_data["total_hours"] or 0,
+                },
+                "qa_summary": {
+                    "total_cycle_time": qa_data["total_cycle_time"] or 0,
+                    "total_sheets_qc": qa_data["total_sheets"] or 0,
+                },
+                "accounts_summary": {
+                    "total_entries": acc_data["total_records"] or 0,
+                },
             }
-        })
+        )
 
     except Exception as e:
-        return Response(
-            {"error": str(e)}, 
-            status=500
-        )
-
-
-# @api_view(["GET"])
-# def universal_report(request):
-#     """
-#     Universal Reporting API
-
-#     Example:
-#     /api/report/?filter_type=operator&value=John&start=2025-01-01&end=2025-01-31
-#     filter_type = operator | material | company | machine
-#     """
-#     try:
-#         filter_type = request.GET.get("filter_type")   # operator, material, company, machine
-#         value = request.GET.get("value")               # John / Steel / TISCO / Machine1
-#         start = request.GET.get("start")
-#         end = request.GET.get("end")
-
-#         # --------------------------
-#         # INPUT VALIDATION
-#         # --------------------------
-#         if not filter_type or not value or not start or not end:
-#             return Response(
-#                 {"error": "filter_type, value, start, end are required"},
-#                 status=status.HTTP_400_BAD_REQUEST
-#             )
-
-#         start_date = datetime.strptime(start, "%Y-%m-%d")
-#         end_date = datetime.strptime(end, "%Y-%m-%d")
-
-#         result = {
-#             "filter_type": filter_type,
-#             "filter_value": value,
-#             "date_range": f"{start} to {end}",
-#             "summary": {}
-#         }
-
-#         # --------------------------
-#         # OPERATOR REPORT
-#         # --------------------------
-#         if filter_type == "operator":
-#             data = programer_details.objects.filter(
-#                 created_by__username__icontains=value,
-#                 program_date__range=[start_date, end_date]
-#             ).aggregate(
-#                 total_processed_qty=Sum("processed_quantity"),
-#                 total_weight=Sum("used_weight"),
-#                 total_sheets=Sum("number_of_sheets"),
-#                 total_hours=Sum("total_planned_hours"),
-#             )
-#             result["summary"] = data
-
-#         # --------------------------
-#         # MATERIAL TYPE REPORT
-#         # --------------------------
-#         elif filter_type == "material":
-#             data = programer_details.objects.filter(
-#                 material_details__mat_type__icontains=value,
-#                 program_date__range=[start_date, end_date]
-#             ).aggregate(
-#                 total_processed_qty=Sum("processed_quantity"),
-#                 total_weight=Sum("used_weight"),
-#                 total_sheets=Sum("number_of_sheets"),
-#             )
-#             result["summary"] = data
-
-#         # --------------------------
-#         # COMPANY REPORT
-#         # --------------------------
-#         elif filter_type == "company":
-#             data = product_details.objects.filter(
-#                 company_name__icontains=value,
-#                 date__range=[start_date, end_date]
-#             ).aggregate(
-#                 total_products=Count("id"),
-#             )
-#             result["summary"] = data
-
-#         # --------------------------
-#         # MACHINE REPORT
-#         # --------------------------
-#         elif filter_type == "machine":
-#             data = Qa_details.objects.filter(
-#                 machines_used__icontains=value,
-#                 processed_date__range=[start_date, end_date]
-#             ).aggregate(
-#                 total_cycle_time=Sum("total_cycle_time"),
-#                 total_sheets=Sum("no_of_sheets"),
-#             )
-#             result["summary"] = data
-
-#         else:
-#             return Response({"error": "Invalid filter_type"}, status=status.HTTP_400_BAD_REQUEST)
-
-#         return Response(result, status=status.HTTP_200_OK)
-
-#     except Exception as e:
-#         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
+        return Response({"error": str(e)}, status=500)
 
 
 def _parse_date(date_str: str):
@@ -2283,110 +2196,70 @@ def _parse_date(date_str: str):
 
 def _aggregate_machine_metrics(qs, machine_name: str | None = None):
     """
-    Helper to read Qa_details.machines_used JSON and compute:
-    - total_runtime
-    - total_air
-    - per-machine breakdown
-
-    This is written to be defensive, because we don't know the
-    exact JSON shape. It supports these shapes:
-
-    1) List of dicts:
-       [
-         {"machine": "M1", "runtime": 10, "air": 5},
-         {"machine": "M2", "runtime": 8, "air": 4},
-       ]
-
-    2) Dict of {machine_name: {runtime, air}}:
-       {
-         "M1": {"runtime": 10, "air": 5},
-         "M2": {"runtime": 8, "air": 4},
-       }
-
-    If no runtime/air is found inside JSON, it falls back to
-    Qa_details.total_cycle_time as runtime and air = 0.
+    Compute total machine runtime only.
+    Accepts runtime from machines_used JSON in format HH:MM or numeric.
     """
 
     from collections import defaultdict
 
-    machine_runtime = defaultdict(float)
-    machine_air = defaultdict(float)
+    def _normalize(name):
+        if not name:
+            return ""
+        return str(name).lower().replace(" ", "").replace("-", "").replace("_", "")
+
+    def _parse_runtime(val):
+        if not val:
+            return 0
+
+        if isinstance(val, (int, float)):
+            return float(val)
+
+        if isinstance(val, str) and ":" in val:
+            try:
+                h, m = val.split(":")
+                return int(h) * 60 + int(m)
+            except:
+                return 0
+
+        try:
+            return float(val)
+        except:
+            return 0
+
+    selected_machine = _normalize(machine_name)
+    total_runtime = 0.0
 
     for qa in qs:
         mu = qa.machines_used
 
-        # No JSON, fallback
         if not mu:
-            # If we are filtering for specific machine, we don't know which,
-            # so only count if machine_name is None.
-            if machine_name is None and qa.total_cycle_time:
-                machine_runtime["UNKNOWN"] += float(qa.total_cycle_time or 0)
             continue
 
-        # Shape 1: list
+        # List format
         if isinstance(mu, list):
             for item in mu:
                 if not isinstance(item, dict):
                     continue
-                m_name = (
-                    item.get("machine")
-                    or item.get("name")
-                    or item.get("machine_name")
-                    or "UNKNOWN"
-                )
-                if machine_name and m_name != machine_name:
+
+                m_name = item.get("machine") or item.get("name") or "UNKNOWN"
+                if machine_name and _normalize(m_name) != selected_machine:
                     continue
 
-                runtime = (
-                    item.get("runtime")
-                    or item.get("run_time")
-                    or item.get("cycle_time")
-                    or 0
-                )
-                air = item.get("air") or item.get("air_consumption") or 0
+                rt = _parse_runtime(item.get("runtime"))
+                total_runtime += rt
 
-                machine_runtime[m_name] += float(runtime or 0)
-                machine_air[m_name] += float(air or 0)
-
-        # Shape 2: dict
+        # Dict format
         elif isinstance(mu, dict):
             for m_name, metrics in mu.items():
-                if machine_name and m_name != machine_name:
+                if machine_name and _normalize(m_name) != selected_machine:
                     continue
 
-                if isinstance(metrics, dict):
-                    runtime = (
-                        metrics.get("runtime")
-                        or metrics.get("run_time")
-                        or metrics.get("cycle_time")
-                        or 0
-                    )
-                    air = metrics.get("air") or metrics.get("air_consumption") or 0
-                else:
-                    runtime = 0
-                    air = 0
+                rt = _parse_runtime(
+                    metrics.get("runtime") if isinstance(metrics, dict) else 0
+                )
+                total_runtime += rt
 
-                machine_runtime[m_name] += float(runtime or 0)
-                machine_air[m_name] += float(air or 0)
-
-        # Unknown shape → fallback to total_cycle_time if allowed
-        else:
-            if machine_name is None and qa.total_cycle_time:
-                machine_runtime["UNKNOWN"] += float(qa.total_cycle_time or 0)
-
-    total_runtime = sum(machine_runtime.values())
-    total_air = sum(machine_air.values())
-
-    breakdown = [
-        {
-            "machine": m,
-            "runtime": machine_runtime[m],
-            "air": machine_air[m],
-        }
-        for m in machine_runtime.keys()
-    ]
-
-    return total_runtime, total_air, breakdown
+    return total_runtime
 
 
 @api_view(["GET"])
@@ -2472,28 +2345,21 @@ def universal_report(request):
         # 2) OPERATOR REPORT (QA operator – machine side)
         # ==============================================================
         elif filter_type == "operator":
+            machine_filter = request.GET.get("machine")
             # QA side: operator running machines
             qa_qs = Qa_details.objects.filter(
                 created_by__username__iexact=value,
                 processed_date__range=[start_date, end_date],
             )
 
-            qa_agg = qa_qs.aggregate(
-                total_cycle_time=Sum("total_cycle_time"),
-                total_sheets_qc=Sum("no_of_sheets"),
-            )
-
-            total_runtime, total_air, machine_breakdown = _aggregate_machine_metrics(
-                qa_qs
+            total_runtime = _aggregate_machine_metrics(
+                qa_qs, machine_name=machine_filter
             )
 
             result["metrics"] = {
                 "operator": value,
-                "total_runtime": float(total_runtime or 0),
-                "total_air": float(total_air or 0),
-                "total_cycle_time": float(qa_agg["total_cycle_time"] or 0),
-                "total_sheets_qc": float(qa_agg["total_sheets_qc"] or 0),
-                "machines_breakdown": machine_breakdown,
+                "machine_used": machine_filter,
+                "total_runtime": total_runtime,
             }
 
         # ==============================================================
@@ -2527,9 +2393,7 @@ def universal_report(request):
                         prog_agg["total_processed_quantity"] or 0
                     ),
                     "total_used_weight": float(prog_agg["total_used_weight"] or 0),
-                    "total_no_of_sheets": float(
-                        prog_agg["total_no_of_sheets"] or 0
-                    ),
+                    "total_no_of_sheets": float(prog_agg["total_no_of_sheets"] or 0),
                     "total_piercing": float(prog_agg["total_piercing"] or 0),
                 },
                 "qa_metrics": {
@@ -2616,3 +2480,65 @@ def universal_report(request):
             {"error": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@csrf_exempt
+def export_selected_rows(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=400)
+
+    try:
+        body = json.loads(request.body)
+        selected_rows = body.get("selectedRows", [])
+
+        if not isinstance(selected_rows, list) or len(selected_rows) == 0:
+            return JsonResponse({"error": "No rows provided"}, status=400)
+
+        # ------------------------------------------
+        # Create workbook
+        # ------------------------------------------
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Selected Report"
+
+        # Header from first row
+        header = list(selected_rows[0].keys())
+        ws.append(header)
+
+        # Write rows
+        for row in selected_rows:
+            ws.append([row.get(col, "") for col in header])
+
+        # Auto size columns
+        for col_idx, col_name in enumerate(header, start=1):
+            col_letter = get_column_letter(col_idx)
+            ws.column_dimensions[col_letter].width = max(len(col_name) + 2, 12)
+
+        # ------------------------------------------
+        # Save to buffer (NO wb.save(response))
+        # ------------------------------------------
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+
+        # Send file correctly
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = 'attachment; filename="selected_report.xlsx"'
+        return response
+
+    except Exception as e:
+        print("EXPORT ERROR:", e)
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+
+
+
+
+
+
+
+

@@ -72,5 +72,7 @@ urlpatterns = [
 
     path("report/", views.universal_report, name="universal_report"),
 
+    path("export_selected_rows/", views.export_selected_rows, name="export_selected_rows"),
+
 
 ]
