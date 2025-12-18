@@ -58,21 +58,15 @@ urlpatterns = [
     path("get_role_list/",views.get_role_list,name="get_role_list"),
     path("total_product/",views.total_product,name="total_product"),
     path("get_overall_details/",views.get_overall_details,name="get_overall_details"),
-    path("export_overall_details/",views.export_overall_details,name="export_overall_details"),
+    
+    # Report Export
+    path("export_selected_rows/", views.export_selected_rows, name="export_selected_rows"),
     path("export_specific_details/<str:ids>/", views.export_specific_details, name="export_specific_details"),
     
     # Admin Update
     path("update_product_details/<int:product_id>/", views.update_product_details, name="update_product_details"),
     path("update_programer_details/<int:product_id>/",views.update_programer_details,name="update_programer_details"),
     path("update_qa_details/<int:product_id>/",views.update_qa_details,name="update_qa_details"),
-        
-    path("filter_overall_details/",views.filter_overall_details,name="filter_overall_details"),
-
-    path("operator_report/", views.operator_report, name="operator_report"),
-
-    path("report/", views.universal_report, name="universal_report"),
-
-    path("export_selected_rows/", views.export_selected_rows, name="export_selected_rows"),
 
 
 ]
